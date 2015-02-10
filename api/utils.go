@@ -2,7 +2,11 @@ package api
 
 import (
 	"crypto/tls"
+	"errors"
+	"fmt"
 	log "github.com/Sirupsen/logrus"
+	"github.com/denverdino/commander/context"
+	"github.com/samalba/dockerclient"
 	"io"
 	"net"
 	"net/http"
@@ -24,6 +28,36 @@ func copyHeader(dst, src http.Header) {
 			dst.Add(k, v)
 		}
 	}
+}
+
+func getContainerFromVars(c *context.Context, vars map[string]string) (*dockerclient.ContainerInfo, error) {
+	client := c.DockerClient
+
+	if name, ok := vars["name"]; ok {
+		if container, _ := client.InspectContainer(name); container != nil {
+			return container, nil
+		}
+		return nil, fmt.Errorf("No such container: %s", name)
+
+	}
+	//TODO: Optimize with the etcd access
+	if ID, ok := vars["execid"]; ok {
+		containers, _ := client.ListContainers(true, false, "")
+		if containers != nil {
+			for _, container := range containers {
+				containerInfo, _ := client.InspectContainer(container.Id)
+				if containerInfo != nil {
+					for _, execID := range containerInfo.ExecIDs {
+						if ID == execID {
+							return containerInfo, nil
+						}
+					}
+				}
+			}
+		}
+		return nil, fmt.Errorf("Exec %s not found", ID)
+	}
+	return nil, errors.New("Not found")
 }
 
 func proxy(tlsConfig *tls.Config, addr string, w http.ResponseWriter, r *http.Request) (int, error) {

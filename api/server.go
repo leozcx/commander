@@ -4,8 +4,9 @@ import (
 	"crypto/tls"
 	"fmt"
 	log "github.com/Sirupsen/logrus"
-	"github.com/coreos/go-etcd/etcd"
-	"github.com/denverdino/commander/api/filter"
+	"github.com/denverdino/commander/context"
+	"github.com/denverdino/commander/registry"
+
 	"net"
 	"net/http"
 	"strings"
@@ -28,15 +29,11 @@ func newListener(proto, addr string, tlsConfig *tls.Config) (net.Listener, error
 	return l, nil
 }
 
-func ListenAndServe(addr string, hosts []string, version string, enableCors bool, etcdURL string, tlsConfig *tls.Config) error {
-	etcdClient := etcd.NewClient([]string{etcdURL})
-	context := &filter.Context{
-		Addr:       addr,
-		Version:    version,
-		EtcdClient: etcdClient,
-		TLSConfig:  tlsConfig,
-	}
+func ListenAndServe(context *context.Context, hosts []string, enableCors bool) error {
+
 	r := createRouter(context)
+
+	go registry.WatchServiceChange(context.EtcdClient)
 
 	interceptor := NewInterceptor(context, r).addFilterByName("log").addFilterByName("cors")
 
@@ -56,15 +53,15 @@ func ListenAndServe(addr string, hosts []string, version string, enableCors bool
 				err    error
 				server = &http.Server{
 					Addr:    protoAddrParts[1],
-					Handler: interceptor.GetHandler(),
+					Handler: interceptor.GetHandler(context),
 				}
 			)
 
 			switch protoAddrParts[0] {
 			case "unix":
-				l, err = newUnixListener(protoAddrParts[1], tlsConfig)
+				l, err = newUnixListener(protoAddrParts[1], context.TLSConfig)
 			case "tcp":
-				l, err = newListener("tcp", protoAddrParts[1], tlsConfig)
+				l, err = newListener("tcp", protoAddrParts[1], context.TLSConfig)
 			default:
 				err = fmt.Errorf("unsupported protocol: %q", protoAddrParts[0])
 			}

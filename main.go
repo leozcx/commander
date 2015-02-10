@@ -59,7 +59,7 @@ func main() {
 				flAddr, flHosts,
 				flTls, flTlsCaCert, flTlsCert, flTlsKey, flTlsVerify,
 				flEtcd,
-				flNode, //TODO: Remove
+				flNode,
 			},
 			Action: manage,
 		},
@@ -69,7 +69,7 @@ func main() {
 			Usage:     "watch a docker daemon",
 			Flags: []cli.Flag{
 				flStore,
-				flAddr, flHosts,
+				flAddr,
 				flTls, flTlsCaCert, flTlsCert, flTlsKey, flTlsVerify,
 				flNode, flEtcd,
 			},

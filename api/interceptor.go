@@ -2,20 +2,21 @@ package api
 
 import (
 	"github.com/denverdino/commander/api/filter"
+	"github.com/denverdino/commander/context"
 	"net/http"
 )
 
-type HTTPHandlerFunc func(c *filter.Context, w http.ResponseWriter, r *http.Request) int
+type HTTPHandlerFunc func(c *context.Context, w http.ResponseWriter, r *http.Request) int
 
 type Interceptor struct {
-	context *filter.Context
+	//context *filter.Context
 	filters []filter.Filter
 	handler http.Handler
 }
 
-func NewInterceptor(context *filter.Context, handler http.Handler) *Interceptor {
+func NewInterceptor(context *context.Context, handler http.Handler) *Interceptor {
 	return &Interceptor{
-		context: context,
+		//context: context,
 		handler: handler,
 	}
 }
@@ -32,15 +33,15 @@ func (interceptor *Interceptor) addFilterByName(name string) *Interceptor {
 	return interceptor
 }
 
-func (interceptor *Interceptor) GetHandler() http.Handler {
+func (interceptor *Interceptor) GetHandler(context *context.Context) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		for _, filter := range interceptor.filters {
-			filter.Before(interceptor.context, w, r)
+			filter.Before(context, w, r)
 		}
 		interceptor.handler.ServeHTTP(w, r)
 		for i := len(interceptor.filters) - 1; i >= 0; i-- {
 			filter := interceptor.filters[i]
-			filter.After(interceptor.context, w, r)
+			filter.After(context, w, r)
 		}
 	})
 }

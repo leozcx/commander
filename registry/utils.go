@@ -36,17 +36,17 @@ func nodeWalk(node *etcd.Node, vars map[string]string) error {
 	return nil
 }
 
-func watchPrefix(client etcd.Client, prefix string, waitIndex uint64, stopChan chan bool) (uint64, error) {
+func watchPrefix(client *etcd.Client, prefix string, waitIndex uint64, stopChan chan bool) (*etcd.Response, uint64, error) {
 	if waitIndex == 0 {
 		resp, err := client.Get(prefix, false, true)
 		if err != nil {
-			return 0, err
+			return resp, 0, err
 		}
-		return resp.EtcdIndex, nil
+		return resp, resp.EtcdIndex, nil
 	}
 	resp, err := client.Watch(prefix, waitIndex+1, true, nil, stopChan)
 	if err != nil {
-		return waitIndex, err
+		return resp, waitIndex, err
 	}
-	return resp.Node.ModifiedIndex, err
+	return resp, resp.Node.ModifiedIndex, err
 }

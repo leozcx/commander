@@ -28,7 +28,7 @@ func DeleteContainer(etcdClient *etcd.Client, node string, id string) error {
 		hostContainerKey := getHostContainerResourceURI(node, id)
 		_, err = etcdClient.Delete(hostContainerKey, false)
 
-		serviceId := getEnvValue(data.Config.Env, "__SERVICE_ID__")
+		serviceId := getEnvValue(data.Config.Env, SERVICE_ID)
 
 		if len(serviceId) > 0 {
 			serviceContainerKey := getServiceContainerResourceURI(serviceId, id)
@@ -100,7 +100,7 @@ func SetContainer(client *dockerclient.DockerClient, etcdClient *etcd.Client, no
 		log.Info("Create container info: ", id)
 	}
 
-	serviceId := getEnvValue(info.Config.Env, "__SERVICE_ID__")
+	serviceId := getEnvValue(info.Config.Env, SERVICE_ID)
 
 	log.Info("ServiceId = ", serviceId)
 
@@ -214,4 +214,27 @@ func SetService(etcdClient *etcd.Client, serviceId string, data *map[string]inte
 
 	return err
 
+}
+
+func GetServiceDescription(etcdClient *etcd.Client, config *dockerclient.ContainerConfig) (map[string]interface{}, error) {
+	serviceId := getEnvValue(config.Env, SERVICE_ID)
+	key := getServiceResourceURI(serviceId)
+
+	resp, err := etcdClient.Get(key, false, false)
+
+	if err != nil {
+		return nil, err
+	}
+
+	var data map[string]interface{}
+
+	if resp != nil {
+		if err := json.Unmarshal([]byte(resp.Node.Value), &data); err != nil {
+			log.Warn(err)
+			return nil, err
+		}
+		return data, nil
+	}
+	//NOT FOUND
+	return nil, nil
 }

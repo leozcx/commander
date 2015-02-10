@@ -4,25 +4,19 @@ import (
 	"encoding/json"
 	"fmt"
 	log "github.com/Sirupsen/logrus"
-	"github.com/denverdino/commander/api/filter"
+	"github.com/denverdino/commander/context"
+	"github.com/denverdino/commander/json_utils"
 	"github.com/denverdino/commander/registry"
 	"github.com/gorilla/mux"
+	"github.com/samalba/dockerclient"
+
 	"net/http"
 )
 
 const APIVERSION = "1.16"
 
-//type context struct {
-//	addr      string
-//	debug     bool
-//	version   string
-//	tlsConfig *tls.Config
-//}
-
-//type handler func(c *context, w http.ResponseWriter, r *http.Request)
-
 // Default handler for methods not supported by clustering.
-func notImplementedHandler(c *filter.Context, w http.ResponseWriter, r *http.Request) int {
+func notImplementedHandler(c *context.Context, w http.ResponseWriter, r *http.Request) int {
 	status := http.StatusNotImplemented
 	httpError(w, "Not supported in clustering mode.", status)
 	return status
@@ -34,7 +28,7 @@ func httpError(w http.ResponseWriter, err string, status int) {
 }
 
 // Proxy a request to Docker Swarm
-func proxyRequest(c *filter.Context, w http.ResponseWriter, r *http.Request) int {
+func proxyRequest(c *context.Context, w http.ResponseWriter, r *http.Request) int {
 	status, err := proxy(c.TLSConfig, c.Addr, w, r)
 	if err != nil {
 
@@ -43,24 +37,95 @@ func proxyRequest(c *filter.Context, w http.ResponseWriter, r *http.Request) int
 	return status
 }
 
-func createRouter(c *filter.Context) *mux.Router {
+// Proxy a hijack request to the right node
+func proxyHijack(c *context.Context, w http.ResponseWriter, r *http.Request) int {
+	if err := hijack(c.TLSConfig, c.Addr, w, r); err != nil {
+		httpError(w, err.Error(), http.StatusInternalServerError)
+		return http.StatusInternalServerError
+	}
+	return http.StatusOK
+}
+
+// POST /containers/create
+func postContainersCreate(c *context.Context, w http.ResponseWriter, r *http.Request) int {
+	r.ParseForm()
+	var (
+		config dockerclient.ContainerConfig
+		name   = r.Form.Get("name")
+	)
+
+	if err := json.NewDecoder(r.Body).Decode(&config); err != nil {
+		httpError(w, err.Error(), http.StatusBadRequest)
+		return http.StatusBadRequest
+	}
+
+	data, err := registry.GetServiceDescription(c.EtcdClient, &config)
+
+	if data != nil {
+		logs := json_utils.GetByPath(data, "extensions", "logs")
+
+		logList, ok := logs.([]string)
+
+		if ok {
+			for logDir := range logList {
+				log.Info(logDir)
+			}
+		}
+	}
+
+	//Create the container with the updated links
+	container, err := c.DockerClient.CreateContainer(&config, name)
+	if err != nil {
+		httpError(w, err.Error(), http.StatusInternalServerError)
+		return http.StatusInternalServerError
+	}
+
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(http.StatusCreated)
+	fmt.Fprintf(w, "{%q:%q}", "Id", container)
+	return http.StatusCreated
+}
+
+func createRouter(c *context.Context) *mux.Router {
 	r := mux.NewRouter()
 
-	handleServiceResources(c, "/services/create", "POST", r)
+	m := map[string]map[string]HTTPHandlerFunc{
+		"POST": {
+			"/containers/create":           postContainersCreate,
+			"/services/create":             createServiceResource,
+			"/containers/{name:.*}/attach": proxyHijack,
+			"/exec/{execid:.*}/start":      proxyHijack,
+		},
+	}
+
+	for method, routes := range m {
+		for route, fct := range routes {
+			log.WithFields(log.Fields{"method": method, "route": route}).Debug("Registering HTTP route")
+
+			// NOTE: scope issue, make sure the variables are local and won't be changed
+			localRoute := route
+			wrap := wrapFunc(c, fct)
+			localMethod := method
+
+			// add the new route
+			r.Path("/v{version:[0-9.]+}" + localRoute).Methods(localMethod).HandlerFunc(wrap)
+			r.Path(localRoute).Methods(localMethod).HandlerFunc(wrap)
+		}
+	}
 
 	r.PathPrefix("/").HandlerFunc(wrapFunc(c, proxyRequest))
 	//r.HandleFunc(wrapFunc(c, proxyRequest))
 	return r
 }
 
-func wrapFunc(c *filter.Context, f HTTPHandlerFunc) http.HandlerFunc {
+func wrapFunc(c *context.Context, f HTTPHandlerFunc) http.HandlerFunc {
 	wrap := func(w http.ResponseWriter, r *http.Request) {
 		f(c, w, r)
 	}
 	return wrap
 }
 
-func createServiceResource(c *filter.Context, w http.ResponseWriter, r *http.Request) int {
+func createServiceResource(c *context.Context, w http.ResponseWriter, r *http.Request) int {
 
 	var data map[string]interface{}
 
@@ -75,10 +140,4 @@ func createServiceResource(c *filter.Context, w http.ResponseWriter, r *http.Req
 	}
 
 	return http.StatusCreated
-}
-
-func handleServiceResources(c *filter.Context, localRoute string, localMethod string, router *mux.Router) {
-	wrap := wrapFunc(c, createServiceResource)
-	router.Path("/v{version:[0-9.]+}" + localRoute).Methods(localMethod).HandlerFunc(wrap)
-	router.Path(localRoute).Methods(localMethod).HandlerFunc(wrap)
 }

@@ -1,12 +1,13 @@
 package filter
 
 import (
+	"github.com/denverdino/commander/context"
 	"net/http"
 )
 
 type Filter interface {
-	Before(context *Context, w http.ResponseWriter, r *http.Request)
-	After(context *Context, w http.ResponseWriter, r *http.Request)
+	Before(context *context.Context, w http.ResponseWriter, r *http.Request)
+	After(context *context.Context, w http.ResponseWriter, r *http.Request)
 }
 
 func NewFilter(name string) Filter {

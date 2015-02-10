@@ -1,6 +1,7 @@
 package filter
 
 import (
+	"github.com/denverdino/commander/context"
 	"net/http"
 )
 
@@ -13,12 +14,12 @@ func writeCorsHeaders(w http.ResponseWriter, r *http.Request) {
 	w.Header().Add("Access-Control-Allow-Methods", "GET, POST, DELETE, PUT, OPTIONS")
 }
 
-func (filter *CorsFilter) Before(context *Context, w http.ResponseWriter, r *http.Request) {
+func (filter *CorsFilter) Before(context *context.Context, w http.ResponseWriter, r *http.Request) {
 	if context.EnableCores {
 		writeCorsHeaders(w, r)
 	}
 }
 
-func (filter *CorsFilter) After(context *Context, w http.ResponseWriter, r *http.Request) {
+func (filter *CorsFilter) After(context *context.Context, w http.ResponseWriter, r *http.Request) {
 
 }
