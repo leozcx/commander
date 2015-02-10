@@ -27,8 +27,8 @@ python setup.py develop
 ######3 - Etcd Setup in boot2docker
 
 Setup the Etcd with web console for debugging
-ETCD_HOST
-Please change the 
+
+Please change the value of ETCD_HOST
 
 ```sh
 docker run -d -p 4001:4001 jadetest.cn.ibm.com:5000/coreos/etcd:v0.4.6 -cors='*'
@@ -38,7 +38,7 @@ docker run -d -p 8000:8000 --env ETCD_HOST=192.168.59.103 jadetest.cn.ibm.com:50
 ######4 - "commander" of Container Service
 
 ```sh
-commander manage  -H 0.0.0.0:4243 -node 192.168.59.103 -addr 192.168.59.103:2375 -etcd http://192.168.59.103:4001
+commander manage  -H 0.0.0.0:4243 -addr 192.168.59.103:2375 -etcd http://192.168.59.103:4001
 ```
 
 
