@@ -2,7 +2,11 @@ package api
 
 import (
 	"crypto/tls"
+	"errors"
+	"fmt"
 	log "github.com/Sirupsen/logrus"
+	"github.com/denverdino/commander/api/filter"
+	"github.com/samalba/dockerclient"
 	"io"
 	"net"
 	"net/http"
@@ -24,6 +28,38 @@ func copyHeader(dst, src http.Header) {
 			dst.Add(k, v)
 		}
 	}
+}
+
+func getContainerFromVars(c *filter.Context, vars map[string]string) (*dockerclient.ContainerInfo, error) {
+	client, err := newDockerClient(c)
+	if err != nil {
+		return nil, err
+	}
+	if name, ok := vars["name"]; ok {
+		if container, _ := client.InspectContainer(name); container != nil {
+			return container, nil
+		}
+		return nil, fmt.Errorf("No such container: %s", name)
+
+	}
+	//TODO: Optimize with the etcd access
+	if ID, ok := vars["execid"]; ok {
+		containers, _ := client.ListContainers(true, false, "")
+		if containers != nil {
+			for _, container := range containers {
+				containerInfo, _ := client.InspectContainer(container.Id)
+				if containerInfo != nil {
+					for _, execID := range containerInfo.ExecIDs {
+						if ID == execID {
+							return containerInfo, nil
+						}
+					}
+				}
+			}
+		}
+		return nil, fmt.Errorf("Exec %s not found", ID)
+	}
+	return nil, errors.New("Not found")
 }
 
 func proxy(tlsConfig *tls.Config, addr string, w http.ResponseWriter, r *http.Request) (int, error) {
@@ -100,4 +136,9 @@ func hijack(tlsConfig *tls.Config, addr string, w http.ResponseWriter, r *http.R
 	<-errc
 
 	return nil
+}
+
+func newDockerClient(c *filter.Context) (dockerclient.Client, error) {
+	docker, err := dockerclient.NewDockerClient(c.Addr, c.TLSConfig)
+	return docker, err
 }

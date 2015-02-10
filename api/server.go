@@ -6,6 +6,8 @@ import (
 	log "github.com/Sirupsen/logrus"
 	"github.com/coreos/go-etcd/etcd"
 	"github.com/denverdino/commander/api/filter"
+	"github.com/denverdino/commander/registry"
+
 	"net"
 	"net/http"
 	"strings"
@@ -37,6 +39,8 @@ func ListenAndServe(addr string, hosts []string, version string, enableCors bool
 		TLSConfig:  tlsConfig,
 	}
 	r := createRouter(context)
+
+	go registry.WatchServiceChange(etcdClient)
 
 	interceptor := NewInterceptor(context, r).addFilterByName("log").addFilterByName("cors")
 

@@ -12,15 +12,6 @@ import (
 
 const APIVERSION = "1.16"
 
-//type context struct {
-//	addr      string
-//	debug     bool
-//	version   string
-//	tlsConfig *tls.Config
-//}
-
-//type handler func(c *context, w http.ResponseWriter, r *http.Request)
-
 // Default handler for methods not supported by clustering.
 func notImplementedHandler(c *filter.Context, w http.ResponseWriter, r *http.Request) int {
 	status := http.StatusNotImplemented
@@ -43,10 +34,41 @@ func proxyRequest(c *filter.Context, w http.ResponseWriter, r *http.Request) int
 	return status
 }
 
+// Proxy a hijack request to the right node
+func proxyHijack(c *filter.Context, w http.ResponseWriter, r *http.Request) int {
+
+	if err := hijack(c.TLSConfig, c.Addr, w, r); err != nil {
+		httpError(w, err.Error(), http.StatusInternalServerError)
+		return http.StatusInternalServerError
+	}
+	return http.StatusOK
+}
+
 func createRouter(c *filter.Context) *mux.Router {
 	r := mux.NewRouter()
 
-	handleServiceResources(c, "/services/create", "POST", r)
+	m := map[string]map[string]HTTPHandlerFunc{
+		"POST": {
+			"/services/create":             createServiceResource,
+			"/containers/{name:.*}/attach": proxyHijack,
+			"/exec/{execid:.*}/start":      proxyHijack,
+		},
+	}
+
+	for method, routes := range m {
+		for route, fct := range routes {
+			log.WithFields(log.Fields{"method": method, "route": route}).Debug("Registering HTTP route")
+
+			// NOTE: scope issue, make sure the variables are local and won't be changed
+			localRoute := route
+			wrap := wrapFunc(c, fct)
+			localMethod := method
+
+			// add the new route
+			r.Path("/v{version:[0-9.]+}" + localRoute).Methods(localMethod).HandlerFunc(wrap)
+			r.Path(localRoute).Methods(localMethod).HandlerFunc(wrap)
+		}
+	}
 
 	r.PathPrefix("/").HandlerFunc(wrapFunc(c, proxyRequest))
 	//r.HandleFunc(wrapFunc(c, proxyRequest))
@@ -75,10 +97,4 @@ func createServiceResource(c *filter.Context, w http.ResponseWriter, r *http.Req
 	}
 
 	return http.StatusCreated
-}
-
-func handleServiceResources(c *filter.Context, localRoute string, localMethod string, router *mux.Router) {
-	wrap := wrapFunc(c, createServiceResource)
-	router.Path("/v{version:[0-9.]+}" + localRoute).Methods(localMethod).HandlerFunc(wrap)
-	router.Path(localRoute).Methods(localMethod).HandlerFunc(wrap)
 }
