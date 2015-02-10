@@ -32,7 +32,6 @@ func copyHeader(dst, src http.Header) {
 
 func getContainerFromVars(c *context.Context, vars map[string]string) (*dockerclient.ContainerInfo, error) {
 	client := c.DockerClient
-
 	if name, ok := vars["name"]; ok {
 		if container, _ := client.InspectContainer(name); container != nil {
 			return container, nil
